@@ -265,6 +265,16 @@ const questions = transformedQuestions.length > 0 ? transformedQuestions : baseQ
     const answer = answers[question.id];
     if (!answer || answer.type !== 'code') return;
 
+    // Ensure testCases exist before trying to run them
+    if (!('testCases' in question) || !question.testCases || question.testCases.length === 0) {
+      toast({
+        title: "No Tests Available",
+        description: "This question doesn't have test cases defined.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     const { html, js } = answer.value as { html: string; js: string };
     
     const results = await Promise.all(question.testCases.map(async testCase => {
@@ -311,6 +321,21 @@ const questions = transformedQuestions.length > 0 ? transformedQuestions : baseQ
     if (currentQuestion < questions.length - 1) {
       setCurrentQuestion(prev => prev + 1);
     } else {
+      // Check for untested code questions before finishing
+      const untestedCodeQuestions = questions.filter(q => 
+        q.type === 'code' && 
+        answers[q.id] && 
+        !testResults[q.id]
+      );
+      
+      if (untestedCodeQuestions.length > 0) {
+        toast({
+          title: "Untested Code Detected",
+          description: `You have ${untestedCodeQuestions.length} code question(s) without test results. Consider running tests before submitting.`,
+          variant: "default"
+        });
+      }
+      
       finishTest();
     }
   };
@@ -384,10 +409,27 @@ const questions = transformedQuestions.length > 0 ? transformedQuestions : baseQ
         } else {
           // For code questions, check if all test cases passed
           const testResults = answer.testResults || [];
-          isCorrect = testResults.length > 0 && testResults.every(r => r.passed);
+          // Only mark as correct if tests were run and all passed
+          // If tests weren't run but code was written, mark as incomplete (score 50)
+          if (testResults.length > 0) {
+            isCorrect = testResults.every(r => r.passed);
+            score = isCorrect ? 100 : 0;
+          } else {
+            // Code was written but tests weren't run
+            // Check if code is not empty
+            const codeValue = answer.value as { html: string; js: string };
+            if (codeValue && codeValue.js && codeValue.js.trim().length > 0) {
+              // Give partial credit for submitting code without testing
+              score = 50;
+              isCorrect = false; // Mark as incomplete, not correct
+            } else {
+              // No code written at all
+              score = 0;
+              isCorrect = false;
+            }
+          }
           selectedAnswer = JSON.stringify(answer.value);
           correctAnswer = 'All test cases must pass';
-          score = isCorrect ? 100 : 0;
         }
       } else {
         if (q.type === 'multiple-choice') {
