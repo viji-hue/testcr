@@ -10,7 +10,6 @@ import type {
 import { isAssessmentLanguage } from "./types";
 
 // Generated database types are refreshed after applying the migration.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
 
 export interface AssessmentQuestionInput {
