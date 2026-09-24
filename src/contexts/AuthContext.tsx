@@ -155,6 +155,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signUp = async (cohortCode: string, name: string, password: string, role: 'trainer' | 'student') => {
     try {
+      if (role === 'trainer') {
+        return { success: false, error: 'Trainer accounts must be provisioned by an administrator.' };
+      }
       // Generate synthetic email for Supabase auth
       const email = `${name.toLowerCase().replace(/\s+/g, '-')}@${cohortCode.toLowerCase()}.cohort`;
       
@@ -175,8 +178,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
 
       if (data.user) {
-        // Set the user role and update local state
-        await setUserRole(role);
         setUserRoleState(role);
       }
 
