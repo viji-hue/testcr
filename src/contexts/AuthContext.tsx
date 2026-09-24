@@ -112,6 +112,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setUser(session?.user ?? null);
         
         if (session?.user) {
+          setLoading(true);
           // Defer Supabase calls to prevent deadlock
           setTimeout(() => {
             fetchUserRole(session.user.id, session.user.user_metadata)
@@ -122,10 +123,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 console.error('Error fetching role on auth change:', error);
                 // Fallback to user_metadata role
                 setUserRoleState(session.user.user_metadata?.role || null);
-              });
+              })
+              .finally(() => setLoading(false));
           }, 0);
         } else {
           setUserRoleState(null);
+          setLoading(false);
         }
       }
     );
@@ -155,6 +158,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signUp = async (cohortCode: string, name: string, password: string, role: 'trainer' | 'student') => {
     try {
+      if (role === 'trainer') {
+        return { success: false, error: 'Trainer accounts must be provisioned by an administrator.' };
+      }
       // Generate synthetic email for Supabase auth
       const email = `${name.toLowerCase().replace(/\s+/g, '-')}@${cohortCode.toLowerCase()}.cohort`;
       
@@ -175,8 +181,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
 
       if (data.user) {
-        // Set the user role and update local state
-        await setUserRole(role);
         setUserRoleState(role);
       }
 

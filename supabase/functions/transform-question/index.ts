@@ -1,10 +1,11 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
 
+const allowedOrigin = Deno.env.get('ALLOWED_ORIGIN') ?? 'http://localhost:8080';
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': allowedOrigin,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -16,8 +17,15 @@ serve(async (req) => {
   try {
     const { question, difficulty, type } = await req.json();
 
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY is not configured');
+    if (!question || !['medium', 'hard'].includes(difficulty) || !['code', 'multiple-choice', 'text-input'].includes(type)) {
+      return new Response(JSON.stringify({ error: 'Invalid transformation request' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!openAIApiKey) {
+      throw new Error('OPENAI_API_KEY is not configured');
     }
 
     let systemPrompt = '';
@@ -77,16 +85,14 @@ IMPORTANT: Return ONLY a JSON object with this exact structure:
 Do not include any markdown, code blocks, or additional text.`;
     }
 
-    console.log('Transform request:', { difficulty, type, questionText: question.question || question.text });
-
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Authorization': `Bearer ${openAIApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
           { 
@@ -120,19 +126,12 @@ Do not include any markdown, code blocks, or additional text.`;
     const data = await response.json();
     const transformedContent = data.choices[0].message.content;
     
-    console.log('AI Response:', transformedContent.substring(0, 200));
-    
     // Parse the JSON response
     let transformedQuestion;
     try {
       // Remove markdown code blocks if present
       const cleanContent = transformedContent.replace(/```json\n?|\n?```/g, '').trim();
       transformedQuestion = JSON.parse(cleanContent);
-      console.log('Parsed transformation:', { 
-        hasScenario: !!transformedQuestion.scenario,
-        hasQuestion: !!transformedQuestion.question,
-        hasOptions: !!transformedQuestion.options
-      });
     } catch (parseError) {
       console.error('Failed to parse AI response:', transformedContent);
       console.error('Parse error:', parseError);

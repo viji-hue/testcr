@@ -28,7 +28,10 @@ enabled = true
 port = 54325
 
 [functions.evaluate-answer]
-verify_jwt = false
+verify_jwt = true
 
 [functions.transform-question]
+verify_jwt = true
+
+[functions.health]
 verify_jwt = false

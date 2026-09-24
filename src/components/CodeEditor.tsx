@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CheckCircle, XCircle, Play, Code, Terminal } from "lucide-react";
+import { executeCandidateCode } from "@/features/assessments/execution";
 
 interface CodeEditorProps {
   initialHtml?: string;
@@ -59,29 +60,10 @@ export const CodeEditor = ({
     onCodeChange(html, css, value);
   };
 
-  const executeCode = () => {
+  const executeCode = async () => {
     setOutput([]);
-    const logs: string[] = [];
-    
-    // Override console.log to capture output
-    const originalLog = console.log;
-    console.log = (...args) => {
-      logs.push(args.map(arg => 
-        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-      ).join(' '));
-      originalLog(...args);
-    };
-
-    try {
-      // Execute the code
-      new Function(js)();
-      setOutput(logs.length > 0 ? logs : ['Code executed successfully. No output.']);
-    } catch (error) {
-      setOutput([`Error: ${error instanceof Error ? error.message : String(error)}`]);
-    } finally {
-      // Restore original console.log
-      console.log = originalLog;
-    }
+    const result = await executeCandidateCode({ language: "javascript", source: js, testBundleId: "legacy-preview" });
+    setOutput([result.stdout, result.stderr].filter(Boolean));
   };
 
   const generatePreviewCode = () => {
@@ -124,7 +106,7 @@ export const CodeEditor = ({
             <Button
               variant="default"
               size="sm"
-              onClick={executeCode}
+              onClick={() => void executeCode()}
               className="bg-gradient-hero"
             >
               <Play className="h-4 w-4 mr-2" />

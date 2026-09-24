@@ -11,6 +11,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
 import { ArrowLeft, Plus, Save, X, FileText, Code, Brain } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { createAssessment } from "@/features/assessments/api";
+import type { AssessmentLanguage } from "@/features/assessments/types";
 
 interface Question {
   id: string;
@@ -32,13 +34,15 @@ interface Question {
 
 interface TestCreatorProps {
   onBack: () => void;
+  onSaved?: (assessmentId: string) => void;
 }
 
-export const TestCreator = ({ onBack }: TestCreatorProps) => {
+export const TestCreator = ({ onBack, onSaved }: TestCreatorProps) => {
   const { toast } = useToast();
   const [testName, setTestName] = useState("");
   const [testDescription, setTestDescription] = useState("");
-  const [testDuration, setTestDuration] = useState("40");
+  const [language, setLanguage] = useState<AssessmentLanguage>("javascript");
+  const [saving, setSaving] = useState(false);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState<Question>({
     id: "",
@@ -134,7 +138,7 @@ export const TestCreator = ({ onBack }: TestCreatorProps) => {
     });
   };
 
-  const handleSaveTest = () => {
+  const handleSaveTest = async () => {
     if (!testName || questions.length === 0) {
       toast({
         title: "Cannot Save Test",
@@ -144,29 +148,31 @@ export const TestCreator = ({ onBack }: TestCreatorProps) => {
       return;
     }
 
-    // In a real app, this would save to Supabase
-    const testData = {
-      id: generateQuestionId(),
-      name: testName,
-      description: testDescription,
-      duration: parseInt(testDuration),
-      questions: questions,
-      createdAt: new Date().toISOString()
-    };
-
-    console.log("Saving test:", testData);
-    
-    toast({
-      title: "Test Saved",
-      description: `Test "${testName}" has been created successfully with ${questions.length} questions.`
-    });
-
-    // Reset form
-    setTestName("");
-    setTestDescription("");
-    setTestDuration("40");
-    setQuestions([]);
-    resetCurrentQuestion();
+    setSaving(true);
+    try {
+      const assessmentId = await createAssessment({
+        name: testName,
+        description: testDescription,
+        language,
+        questions: questions.map((question) => ({
+          type: question.type === "multiple-choice" ? "multiple_choice" : "code",
+          prompt: [question.scenario, question.text || question.instructions].filter(Boolean).join("\n\n"),
+          options: question.options,
+          publicConfig: { title: question.title, starterCode: question.starterCode, topic: question.topic, difficulty: question.difficulty },
+          privateConfig: question.type === "multiple-choice" ? { correctAnswer: String(question.correctAnswer ?? 0) } : {},
+        })),
+      });
+      toast({ title: "Assessment saved", description: `“${testName}” was saved as a draft with a fixed 30-minute duration.` });
+      setTestName("");
+      setTestDescription("");
+      setQuestions([]);
+      resetCurrentQuestion();
+      onSaved?.(assessmentId);
+    } catch (error) {
+      toast({ title: "Could not save assessment", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const updateCurrentQuestionOption = (index: number, value: string) => {
@@ -209,9 +215,9 @@ export const TestCreator = ({ onBack }: TestCreatorProps) => {
               <p className="text-muted-foreground">Design custom assessments for your students</p>
             </div>
           </div>
-          <Button onClick={handleSaveTest} disabled={!testName || questions.length === 0}>
+          <Button onClick={() => void handleSaveTest()} disabled={!testName || questions.length === 0 || saving}>
             <Save className="h-4 w-4 mr-2" />
-            Save Test
+            {saving ? "Saving…" : "Save Assessment"}
           </Button>
         </div>
 
@@ -246,15 +252,16 @@ export const TestCreator = ({ onBack }: TestCreatorProps) => {
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="testDuration">Duration (minutes)</Label>
-                  <Input
-                    id="testDuration"
-                    type="number"
-                    value={testDuration}
-                    onChange={(e) => setTestDuration(e.target.value)}
-                    min="5"
-                    max="180"
-                  />
+                  <Label htmlFor="assessmentLanguage">Assessment type *</Label>
+                  <Select value={language} onValueChange={(value) => setLanguage(value as AssessmentLanguage)}>
+                    <SelectTrigger id="assessmentLanguage"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="java">Java</SelectItem><SelectItem value="javascript">JavaScript</SelectItem></SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="testDuration">Duration</Label>
+                  <Input id="testDuration" value="30 minutes (server enforced)" readOnly />
                 </div>
               </CardContent>
             </Card>
@@ -327,7 +334,7 @@ export const TestCreator = ({ onBack }: TestCreatorProps) => {
                   <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="multiple-choice">Multiple Choice</TabsTrigger>
                     <TabsTrigger value="code">HTML/CSS Code</TabsTrigger>
-                    <TabsTrigger value="js-code">JavaScript Code</TabsTrigger>
+                    <TabsTrigger value="js-code">{language === "java" ? "Java" : "JavaScript"} Code</TabsTrigger>
                   </TabsList>
 
                   {/* Common Fields */}
@@ -498,7 +505,7 @@ export const TestCreator = ({ onBack }: TestCreatorProps) => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="starterJs">Starter JavaScript</Label>
+                        <Label htmlFor="starterJs">Starter {language === "java" ? "Java" : "JavaScript"}</Label>
                         <Textarea
                           id="starterJs"
                           value={currentQuestion.starterCode?.js || ""}

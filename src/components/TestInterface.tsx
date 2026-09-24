@@ -13,6 +13,7 @@ import { useTestSession } from "@/hooks/useTestSession";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { StudentInfoDialog } from "@/components/StudentInfoDialog";
+import { executeCandidateCode } from "@/features/assessments/execution";
 
 export type DifficultyLevel = 'easy' | 'medium' | 'hard';
 
@@ -277,23 +278,11 @@ const questions = transformedQuestions.length > 0 ? transformedQuestions : baseQ
 
     const { html, js } = answer.value as { html: string; js: string };
     
-    const results = await Promise.all(question.testCases.map(async testCase => {
-      try {
-        const passed = await testCase.test(js);
-        return {
-          name: testCase.name,
-          passed,
-          message: passed 
-            ? '✓ Test passed successfully' 
-            : `✗ Test failed: Expected behavior not found. Check your code logic and make sure all requirements are met.`
-        };
-      } catch (error) {
-        return {
-          name: testCase.name,
-          passed: false,
-          message: `✗ Error executing test: ${error instanceof Error ? error.message : 'Unknown error'}. Check your code for syntax errors.`
-        };
-      }
+    const execution = await executeCandidateCode({ language: "javascript", source: js, testBundleId: question.id });
+    const results = question.testCases.map(testCase => ({
+      name: testCase.name,
+      passed: false,
+      message: execution.stderr || "Secure code execution is not configured.",
     }));
 
     setTestResults(prev => ({ ...prev, [question.id]: results }));

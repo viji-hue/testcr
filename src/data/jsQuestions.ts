@@ -4737,7 +4737,7 @@ queue.enqueue(async () => 'Task 1').then(console.log);`
             const testFunction = new Function(code + '; return AsyncQueue;');
             const AsyncQueue = testFunction();
             const queue = new AsyncQueue();
-            let order = [];
+            const order = [];
             queue.enqueue(async () => {
               await new Promise(resolve => setTimeout(resolve, 50));
               order.push(1);

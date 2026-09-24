@@ -5,13 +5,15 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/AuthContext";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { GraduationCap, Loader2 } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 export default function AuthPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestedRole = searchParams.get('role') === 'trainer' ? 'trainer' : 'student';
   const { toast } = useToast();
   const { signIn, signUp, loading: authLoading } = useAuth();
   
@@ -49,7 +51,7 @@ export default function AuthPage() {
         title: "Welcome back!",
         description: "Successfully logged in",
       });
-      navigate('/');
+      navigate(requestedRole === 'trainer' ? '/trainer' : '/student');
     } else {
       toast({
         title: "Login Failed",
@@ -243,24 +245,15 @@ export default function AuthPage() {
                   </div>
                   <div className="space-y-2">
                     <Label className="text-white">I am a:</Label>
-                    <RadioGroup 
-                      value={signupRole} 
-                      onValueChange={(value) => setSignupRole(value as 'student' | 'trainer')}
-                      disabled={signupLoading}
-                    >
+                    <RadioGroup value="student" disabled>
                       <div className="flex items-center space-x-2">
                         <RadioGroupItem value="student" id="student" className="border-white text-white" />
                         <Label htmlFor="student" className="text-white font-normal cursor-pointer">
                           Student
                         </Label>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="trainer" id="trainer" className="border-white text-white" />
-                        <Label htmlFor="trainer" className="text-white font-normal cursor-pointer">
-                          Trainer
-                        </Label>
-                      </div>
                     </RadioGroup>
+                    <p className="text-xs text-white/70">Trainer accounts are created by an administrator.</p>
                   </div>
                   <Button 
                     type="submit" 
