@@ -6,8 +6,9 @@ const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!;
 
+const allowedOrigin = Deno.env.get('ALLOWED_ORIGIN') ?? 'http://localhost:8080';
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': allowedOrigin,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -19,7 +20,12 @@ serve(async (req) => {
   try {
     const { question, answer, expectedKeywords } = await req.json();
 
-    console.log('Evaluating answer:', { question, answer, expectedKeywords });
+    if (typeof question !== 'string' || typeof answer !== 'string' || question.length > 10000 || answer.length > 20000) {
+      return new Response(JSON.stringify({ error: 'Invalid question or answer' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     if (!openAIApiKey) {
       throw new Error('OpenAI API key not configured');
@@ -82,8 +88,6 @@ Example response:
     const data = await response.json();
     const evaluationText = data.choices[0].message.content;
 
-    console.log('Raw AI evaluation:', evaluationText);
-
     // Parse the JSON response
     let evaluation;
     try {
@@ -101,8 +105,6 @@ Example response:
 
     // Ensure score is within valid range
     evaluation.score = Math.max(0, Math.min(100, evaluation.score || 0));
-
-    console.log('Parsed evaluation:', evaluation);
 
     return new Response(JSON.stringify(evaluation), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
