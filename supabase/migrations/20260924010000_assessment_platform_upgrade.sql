@@ -1,6 +1,8 @@
 -- Test Crafter assessment platform foundation.
 -- Candidate code execution is intentionally not implemented in PostgreSQL or Edge Functions.
 
+CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA extensions;
+
 CREATE TYPE public.assessment_language AS ENUM ('java', 'javascript');
 CREATE TYPE public.assessment_status AS ENUM ('draft', 'published', 'archived');
 CREATE TYPE public.assessment_question_type AS ENUM ('multiple_choice', 'text', 'code');
@@ -350,7 +352,9 @@ DECLARE
   v_now TIMESTAMPTZ := clock_timestamp();
 BEGIN
   SELECT * INTO v_attempt FROM public.assessment_attempts
-  WHERE id = p_attempt_id AND candidate_id = auth.uid() FOR UPDATE;
+  WHERE id = p_attempt_id
+    AND (candidate_id = auth.uid() OR (auth.uid() IS NULL AND p_requested_mode = 'automatic'))
+  FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'attempt not found' USING ERRCODE = '42501'; END IF;
   IF v_attempt.status <> 'in_progress' OR v_now >= v_attempt.expires_at THEN
     IF v_attempt.status = 'in_progress' THEN
@@ -444,6 +448,38 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.expire_due_assessment_attempts()
+RETURNS INTEGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+  v_attempt_id UUID;
+  v_expired INTEGER := 0;
+BEGIN
+  FOR v_attempt_id IN
+    SELECT id FROM public.assessment_attempts
+    WHERE status = 'in_progress' AND expires_at <= clock_timestamp()
+    ORDER BY expires_at
+    FOR UPDATE SKIP LOCKED
+  LOOP
+    PERFORM public.submit_assessment_attempt(v_attempt_id, 'automatic');
+    v_expired := v_expired + 1;
+  END LOOP;
+  RETURN v_expired;
+END;
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'expire-assessment-attempts') THEN
+    PERFORM cron.schedule(
+      'expire-assessment-attempts',
+      '* * * * *',
+      'SELECT public.expire_due_assessment_attempts();'
+    );
+  END IF;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.get_assessment_report(
   p_assessment_id UUID,
   p_language public.assessment_language DEFAULT NULL,
@@ -461,6 +497,7 @@ BEGIN
     WHERE a.id = p_assessment_id AND a.owner_id = auth.uid() AND public.has_role(auth.uid(), 'trainer')) THEN
     RAISE EXCEPTION 'trainer authorization required' USING ERRCODE = '42501';
   END IF;
+  PERFORM public.expire_due_assessment_attempts();
   IF p_page < 1 OR p_page_size NOT BETWEEN 1 AND 100 OR p_sort NOT IN ('score', 'submitted_at') THEN RAISE EXCEPTION 'invalid report options'; END IF;
 
   WITH assessment AS (
@@ -549,6 +586,7 @@ REVOKE ALL ON FUNCTION public.list_available_assessments() FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.start_assessment_attempt(UUID) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.autosave_attempt_answer(UUID,UUID,JSONB,BIGINT) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.submit_assessment_attempt(UUID,public.submission_mode) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.expire_due_assessment_attempts() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.get_assessment_report(UUID,public.assessment_language,public.attempt_status,TEXT,TEXT,INTEGER,INTEGER) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.record_report_export(UUID,TEXT) FROM PUBLIC, anon;
 

@@ -47,7 +47,7 @@ Public sign-up always creates a `student` role. Trainer accounts must be provisi
 4. An authorized candidate starts or resumes one attempt.
 5. PostgreSQL records `started_at` and `expires_at`; refreshes reuse the same attempt.
 6. Answers autosave with monotonically increasing revisions and bounded client retries.
-7. Late saves are rejected. Submission is idempotent and records manual or automatic mode.
+7. Late saves are rejected. Submission is idempotent and records manual or automatic mode. A PostgreSQL cron job reconciles expired attempts every minute, including when the browser is disconnected.
 8. Trainers access a protected summary and candidate-level report with search, filters, server pagination, sorting, and CSV export.
 
 Candidate responses never include private grading configuration or correct answers.
@@ -89,6 +89,7 @@ npm run lint
 npm run typecheck
 npm test
 npm run build
+supabase test db
 ```
 
 Tests cover language validation and server-clock countdown behavior. Database authorization, expiry, and idempotency should also be exercised against a disposable local Supabase instance before deployment.

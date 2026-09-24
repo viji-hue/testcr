@@ -103,6 +103,25 @@ export function CandidateAssessments() {
     return () => window.clearInterval(timer);
   }, [attempt, finish, toast]);
 
+  useEffect(() => {
+    if (!attempt || Object.keys(answers).length === 0) return;
+    const interval = window.setInterval(async () => {
+      setSaveState("saving");
+      try {
+        const responses = await Promise.all(Object.entries(answers).map(([questionId, value]) => {
+          const revision = (revisions.current[questionId] ?? 0) + 1;
+          revisions.current[questionId] = revision;
+          return withRetry(() => autosaveAnswer(attempt.attemptId, questionId, { value }, revision));
+        }));
+        if (responses.some((response) => !response.accepted)) await finish("automatic");
+        else setSaveState("saved");
+      } catch {
+        setSaveState("offline");
+      }
+    }, 15_000);
+    return () => window.clearInterval(interval);
+  }, [answers, attempt, finish]);
+
   const updateAnswer = (questionId: string, value: unknown) => {
     setAnswers((current) => ({ ...current, [questionId]: value }));
     setSaveState("saving");
